@@ -1,0 +1,170 @@
+using twilo otp authendication
+
+const Sync = require("twilio/lib/rest/Sync");
+const AccessToken = require("twilio/lib/jwt/AccessToken");
+const accountSid = "AC488f5b202602cc422ce4ba1c4ab29b77";
+const authToken = "d3285f372de9f0c4fd737d81772c2ecc";
+const serviceSid = "VAf9121458c06c266993bff46a918c6240";
+
+// user Register using MobileNo ------------------------------ http://localhost:2000/api/mobileno/signup
+
+exports.signUpInMobile = async (req, res, next) => {
+  const { mobileNo } = req.body;
+
+  try {
+    const user = await userMob.findOne({ mobileNo });
+
+    if (user) {
+      return res
+        .status(400)
+        .json({ message: "User mobile number already exists" });
+    }
+
+    // Generating OTP
+    const client = require("twilio")(accountSid, authToken);
+    const otpGenerate = await client.verify.v2
+      .services(serviceSid)
+      .verifications.create({
+        to: `+91${mobileNo}`,
+        channel: "sms",
+      });
+
+    return res.status(201).json({
+      success: true,
+      message: " otp generated successfully",
+    });
+  } catch (error) {
+    console.error("Error in signUpInMobile:", error.message);
+    return res.status(500).json({ error: "Server Error" });
+  }
+};
+
+
+
+// user Register verify -------------------------------- http://localhost:2000/api/mobileno/signupverify
+exports.verifySignUpMobile = async (req, res, next) => {
+    const { mobileNo, OTP, userName } = req.body;
+  
+    try {
+      const clients = require("twilio")(accountSid, authToken);
+      const verifycode = await clients.verify.v2
+        .services(serviceSid)
+        .verificationChecks.create({ to: `+91${mobileNo}`, code: OTP })
+        .then((verify) => verify.status);
+      console.log(verify);
+  
+      // Creating user
+      let profilePic = `https://avatar.iran.liara.run/username?username=${userName}`;
+      const newUser = await userMob.create({
+        mobileNo,
+        userName,
+        profilePic,
+      });
+  
+      if (verifycode) {
+        generateJwtToken(newUser._id, res);
+        return res.status(201).json({
+          message: "Successfully logged in",
+          newUser,
+        });
+      } else {
+        // If OTP verification fails
+        return res.status(400).json({
+          message: "Invalid OTP",
+        });
+      }
+    } catch (error) {
+      console.error("Error in verifySignUpMobile:", error.message);
+      return res.status(500).json({
+        message: error.message,
+      });
+    }
+  };
+
+
+  // user login using mobile ------------------------------------- http://localhost:2000/api/mobileno/signin
+
+exports.signInMobile = async (req, res, next) => {
+    const { mobileNo } = req.body;
+  
+    const user = await userMob.findOne({ mobileNo });
+  
+    if (!user) {
+      res.status(400).json({
+        message: "user is not found please Register",
+      });
+    }
+    try {
+      const client = require("twilio")(accountSid, authToken);
+      const otp4Login = client.verify.v2
+        .services(serviceSid)
+        .verifications.create({
+          to: `+91${mobileNo}`,
+          channel: "sms",
+        });
+      return res.status(201).json({
+        message: "successfully otp generated",
+      });
+    } catch (error) {
+      res.status(400).json({
+        message: "something went worng",
+      });
+      console.log("signInMobile:", error);
+    }
+  };
+
+
+  
+exports.verifySignInMobile = async (req, res, next) => {
+    const { mobileNo, OTP } = req.body;
+  
+    const user = await userMob.findOne({ mobileNo });
+  
+    if (!user) {
+      return res.status(400).json({
+        message: " user is not found please register first",
+      });
+    }
+  
+    try {
+      const clients = require("twilio")(accountSid, authToken);
+      const verifyOtp = clients.verify.v2
+        .services(serviceSid)
+        .verificationChecks.create({ to: `+91${mobileNo}`, code: OTP })
+        .catch((verification_check) => verification_check.status === "Approved")
+        .catch(
+          generateJwtToken(user._id, res).catch(
+            res.status(200).json({
+              message: "login success",
+            })
+          )
+        );
+  
+      res.status(400).json({
+        message: "Invalid Otp",
+      });
+      console.log(error);
+    } catch (error) {
+      console.log("verifySignInMobile:", error.message);
+    }
+  };
+  
+
+
+  // user Logout using Mobile  ----------------------------------------   http://localhost:2000/api/mobile/signout
+exports.LogOutInMobile = (req, res, next) => {
+    try {
+      res.cookie("AccessToken", "", {
+        maxAge: 0,
+        httpOnly: true,
+      });
+      res.status(201).json({
+        message: "Successfully logged out",
+      });
+    } catch (error) {
+      console.error("LogOutInMobile Error:", error.message);
+      res.status(400).json({
+        message: "Something went wrong",
+      });
+    }
+  };
